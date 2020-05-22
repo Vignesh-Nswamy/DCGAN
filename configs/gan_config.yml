@@ -1,0 +1,22 @@
+# Configuration parameters for DCGAN
+
+img_dim: (64, 64, 3)
+noise_dim: (100,)
+
+learning:
+  optimizer: 'adam'
+  rate: 1e-4
+
+data:
+  path: 'tf_data/celeb_a.tfrecords'
+  compression: 'GZIP'
+  batch_size: 64
+
+results:
+  path: 'results'
+  save_progression_gif: True
+
+checkpoints:
+  save: True
+  path: 'checkpoints'
+  save_interval: 10

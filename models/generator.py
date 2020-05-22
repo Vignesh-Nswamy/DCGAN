@@ -1,43 +1,66 @@
+import os
 import tensorflow as tf
+from tensorflow.keras.layers import Conv2DTranspose
+from tensorflow.keras.layers import LeakyReLU
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.layers import Reshape
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.models import load_model
+from tensorflow.keras import Sequential
 
 
 class Generator:
-    def __init__(self, input_shape):
-        self.input_shape = input_shape
-        self.model = tf.keras.Sequential()
-        self.weight_initializer = tf.keras.initializers.TruncatedNormal(stddev=0.02, mean=0.0, seed=42)
+    def __init__(self, configs):
+        self.configs = configs
+        self.__kernel_regularizer = tf.keras.regularizers.l2(0.001)
+        self.__he_normal_initializer = tf.keras.initializers.he_normal(seed=0)
+        self.__lecun_normal_initializer = tf.keras.initializers.lecun_normal(seed=0)
 
-    def add_convT_stack(self, out_channels: int, filter_size: tuple, strides: tuple, padding='same', use_bias=False):
-        self.model.add(tf.keras.layers.Conv2DTranspose(out_channels, filter_size, strides=strides, padding=padding,
-                                                       use_bias=use_bias, kernel_initializer=self.weight_initializer))
-        self.model.add(tf.keras.layers.BatchNormalization())
-        self.model.add(tf.keras.layers.LeakyReLU())
+        self.input_dim = eval(self.configs.noise_dim)
 
-    def get_model(self):
-        self.model.add(tf.keras.layers.Dense(4 * 4 * 1024, input_shape=self.input_shape,
-                                             kernel_initializer=self.weight_initializer))
-        self.model.add(tf.keras.layers.BatchNormalization())
-        self.model.add(tf.keras.layers.LeakyReLU())
-        self.model.add(tf.keras.layers.Reshape((4, 4, 1024)))
+    def __add_conv_block(self, model, filters, kernel_size, strides, block_num):
+        model.add(Conv2DTranspose(filters=filters,
+                                  kernel_size=kernel_size,
+                                  strides=strides,
+                                  padding='same',
+                                  activation=LeakyReLU(),
+                                  use_bias=False,
+                                  kernel_regularizer=self.__kernel_regularizer,
+                                  kernel_initializer=self.__he_normal_initializer,
+                                  name=f'conv_T_{block_num}'))
+        model.add(BatchNormalization(name=f'batch_norm_{block_num}'))
 
-        self.add_convT_stack(512, (5, 5), (2, 2))
+    def __create(self):
+        model = Sequential()
+        model.add(Dense(4 * 4 * 1024,
+                        input_shape=self.input_dim,
+                        activation=LeakyReLU(),
+                        kernel_regularizer=self.__kernel_regularizer,
+                        kernel_initializer=self.__he_normal_initializer,
+                        name='fc_1'))
+        model.add(BatchNormalization(name='batch_norm'))
+        model.add(Reshape((4, 4, 1024),
+                          name='reshape'))
 
-        self.add_convT_stack(256, (5, 5), (2, 2))
+        for block_num, num_filters in enumerate([512, 256, 128]):
+            self.__add_conv_block(model, num_filters, 5, 2, block_num)
 
-        self.add_convT_stack(128, (5, 5), (2, 2))
+        model.add(Conv2DTranspose(filters=3,
+                                  kernel_size=5,
+                                  strides=2,
+                                  padding='same',
+                                  activation='tanh',
+                                  use_bias=False,
+                                  kernel_regularizer=self.__kernel_regularizer,
+                                  kernel_initializer=self.__lecun_normal_initializer))
 
-        # self.add_convT_stack(64, (5, 5), (2, 2))
+        return model
 
-        self.model.add(tf.keras.layers.Conv2DTranspose(3, (5, 5), strides=(2, 2), padding='same', use_bias=False,
-                                                       kernel_initializer=self.weight_initializer, activation='tanh'))
-        return self.model
+    def model(self):
+        ckpt_dir = self.configs.checkpoints.path
+        if os.path.exists(os.path.join(ckpt_dir, 'generator.ckpt')):
+            print(f'Found saved generator at {os.path.join(ckpt_dir, "generator.ckpt")}. Loading...')
+            return load_model(os.path.join(ckpt_dir, "generator.ckpt"))
+        else:
+            return self.__create()
 
-    def get_loss(self, fake_output):
-        return tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_output,
-                                                                      labels=tf.ones_like(fake_output)))
-
-
-if __name__ == '__main__':
-    generator = Generator((100,))
-    model = generator.get_model()
-    print(model.summary())

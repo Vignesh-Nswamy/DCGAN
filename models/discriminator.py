@@ -1,43 +1,59 @@
+import os
 import tensorflow as tf
+from tensorflow.keras.layers import Input
+from tensorflow.keras.layers import Conv2D
+from tensorflow.keras.layers import LeakyReLU
+from tensorflow.keras.layers import BatchNormalization
+from tensorflow.keras.layers import Flatten
+from tensorflow.keras.layers import Dropout
+from tensorflow.keras.layers import Dense
+from tensorflow.keras.models import load_model
+from tensorflow.keras import Sequential
 
 
 class Discriminator:
-    def __init__(self, input_shape):
-        self.input_shape = input_shape
-        self.model = tf.keras.Sequential()
-        self.weight_initializer = tf.keras.initializers.TruncatedNormal(stddev=0.02, mean=0.0, seed=42)
+    def __init__(self, configs):
+        self.configs = configs
+        self.__kernel_regularizer = tf.keras.regularizers.l2(0.001)
+        self.__he_normal_initializer = tf.keras.initializers.he_normal(seed=0)
+        self.__lecun_normal_initializer = tf.keras.initializers.lecun_normal(seed=0)
 
-    def add_conv_stack(self, out_channels: int, filter_size: tuple, strides: tuple, padding='same'):
-        self.model.add(tf.keras.layers.Conv2D(out_channels, filter_size, strides=strides, padding=padding,
-                                              kernel_initializer=self.weight_initializer))
-        self.model.add(tf.keras.layers.LeakyReLU())
-        self.model.add(tf.keras.layers.Dropout(0.3))
+        self.input_dim = eval(self.configs.img_dim)
 
-    def get_model(self):
-        self.model.add(tf.keras.layers.Input(self.input_shape))
+    def __add_conv_block(self, model, filters, kernel_size, strides, block_num):
+        model.add(Conv2D(filters=filters,
+                         kernel_size=kernel_size,
+                         strides=strides,
+                         padding='same',
+                         activation=LeakyReLU(),
+                         kernel_regularizer=self.__kernel_regularizer,
+                         kernel_initializer=self.__he_normal_initializer,
+                         name=f'conv_{block_num}'))
+        model.add(BatchNormalization(name=f'batch_norm_{block_num}'))
+        model.add(Dropout(0.3,
+                          name=f'dropout_{block_num}'))
 
-        self.add_conv_stack(64, (5, 5), (2, 2))
+    def __create(self):
+        model = Sequential()
+        model.add(Input(self.input_dim,
+                        name='in_layer'))
+        for block_num, num_filters in enumerate([64, 128, 256, 512]):
+            self.__add_conv_block(model,
+                                  num_filters,
+                                  5,
+                                  2,
+                                  block_num)
 
-        self.add_conv_stack(128, (5, 5), (2, 2))
+        model.add(Flatten(name='flatten'))
+        model.add(Dense(1,
+                        kernel_initializer=self.__lecun_normal_initializer,
+                        name='out_layer'))
+        return model
 
-        self.add_conv_stack(256, (5, 5), (2, 2))
-
-        self.add_conv_stack(512, (5, 5), (2, 2))
-
-        self.model.add(tf.keras.layers.Flatten())
-        self.model.add(tf.keras.layers.Dense(1, kernel_initializer=self.weight_initializer))
-
-        return self.model
-
-    def get_loss(self, real_output, fake_output):
-        real_loss = tf.math.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=real_output,
-                                                                                labels=tf.ones_like(real_output)))
-        fake_loss = tf.math.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=fake_output,
-                                                                                labels=tf.zeros_like(fake_output)))
-        return real_loss + fake_loss
-
-
-if __name__ == '__main__':
-    discriminator = Discriminator((64, 64, 3))
-    model = discriminator.get_model()
-    print(model.summary())
+    def model(self):
+        ckpt_dir = self.configs.checkpoints.path
+        if os.path.exists(os.path.join(ckpt_dir, 'discriminator.ckpt')):
+            print(f'Found saved discriminator at {os.path.join(ckpt_dir, "discriminator.ckpt")}. Loading...')
+            return load_model(os.path.join(ckpt_dir, "discriminator.ckpt"))
+        else:
+            return self.__create()
