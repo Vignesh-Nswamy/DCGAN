@@ -3,7 +3,6 @@ import tensorflow as tf
 from tensorflow.keras.layers import Input
 from tensorflow.keras.layers import Conv2D
 from tensorflow.keras.layers import LeakyReLU
-from tensorflow.keras.layers import BatchNormalization
 from tensorflow.keras.layers import Flatten
 from tensorflow.keras.layers import Dropout
 from tensorflow.keras.layers import Dense
@@ -14,9 +13,7 @@ from tensorflow.keras import Sequential
 class Discriminator:
     def __init__(self, configs):
         self.configs = configs
-        self.__kernel_regularizer = tf.keras.regularizers.l2(0.001)
-        self.__he_normal_initializer = tf.keras.initializers.he_normal(seed=0)
-        self.__lecun_normal_initializer = tf.keras.initializers.lecun_normal(seed=0)
+        self.weight_initializer = tf.keras.initializers.TruncatedNormal(stddev=0.02, mean=0.0, seed=42)
 
         self.input_dim = eval(self.configs.img_dim)
 
@@ -26,10 +23,8 @@ class Discriminator:
                          strides=strides,
                          padding='same',
                          activation=LeakyReLU(),
-                         kernel_regularizer=self.__kernel_regularizer,
-                         kernel_initializer=self.__he_normal_initializer,
+                         kernel_initializer=self.weight_initializer,
                          name=f'conv_{block_num}'))
-        model.add(BatchNormalization(name=f'batch_norm_{block_num}'))
         model.add(Dropout(0.3,
                           name=f'dropout_{block_num}'))
 
@@ -46,7 +41,7 @@ class Discriminator:
 
         model.add(Flatten(name='flatten'))
         model.add(Dense(1,
-                        kernel_initializer=self.__lecun_normal_initializer,
+                        kernel_initializer=self.weight_initializer,
                         name='out_layer'))
         return model
 

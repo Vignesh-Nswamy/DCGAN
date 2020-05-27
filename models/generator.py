@@ -12,9 +12,7 @@ from tensorflow.keras import Sequential
 class Generator:
     def __init__(self, configs):
         self.configs = configs
-        self.__kernel_regularizer = tf.keras.regularizers.l2(0.001)
-        self.__he_normal_initializer = tf.keras.initializers.he_normal(seed=0)
-        self.__lecun_normal_initializer = tf.keras.initializers.lecun_normal(seed=0)
+        self.weight_initializer = tf.keras.initializers.TruncatedNormal(stddev=0.02, mean=0.0, seed=42)
 
         self.input_dim = eval(self.configs.noise_dim)
 
@@ -23,22 +21,20 @@ class Generator:
                                   kernel_size=kernel_size,
                                   strides=strides,
                                   padding='same',
-                                  activation=LeakyReLU(),
                                   use_bias=False,
-                                  kernel_regularizer=self.__kernel_regularizer,
-                                  kernel_initializer=self.__he_normal_initializer,
+                                  kernel_initializer=self.weight_initializer,
                                   name=f'conv_T_{block_num}'))
         model.add(BatchNormalization(name=f'batch_norm_{block_num}'))
+        model.add(LeakyReLU())
 
     def __create(self):
         model = Sequential()
         model.add(Dense(4 * 4 * 1024,
                         input_shape=self.input_dim,
-                        activation=LeakyReLU(),
-                        kernel_regularizer=self.__kernel_regularizer,
-                        kernel_initializer=self.__he_normal_initializer,
+                        kernel_initializer=self.weight_initializer,
                         name='fc_1'))
         model.add(BatchNormalization(name='batch_norm'))
+        model.add(LeakyReLU())
         model.add(Reshape((4, 4, 1024),
                           name='reshape'))
 
@@ -51,8 +47,8 @@ class Generator:
                                   padding='same',
                                   activation='tanh',
                                   use_bias=False,
-                                  kernel_regularizer=self.__kernel_regularizer,
-                                  kernel_initializer=self.__lecun_normal_initializer))
+                                  kernel_initializer=self.weight_initializer,
+                                  name='out_conv'))
 
         return model
 
